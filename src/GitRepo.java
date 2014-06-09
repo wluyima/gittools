@@ -81,13 +81,13 @@ public class GitRepo {
 		}
 	}
 	
-	public List<DiffEntry> getDiffEntryBetweenMasterAndOneTen(String path) throws Exception {
-		AbstractTreeIterator masterTreeParser = prepareTreeParserForRef("refs/heads/master");
+	public List<DiffEntry> getDiffEntryBetweenOneTenAndOneNine(String path) throws Exception {
+		AbstractTreeIterator oneNineTreeParser = prepareTreeParserForRef("refs/heads/1.9.x");
 		AbstractTreeIterator oneTenTreeParser = prepareTreeParserForRef("refs/heads/1.10.x");
 		
 		DiffCommand diffCommand = git.diff();
 		diffCommand.setPathFilter(PathFilter.create(path));
-		diffCommand.setOldTree(masterTreeParser).setNewTree(oneTenTreeParser);
+		diffCommand.setOldTree(oneNineTreeParser).setNewTree(oneTenTreeParser);
 		
 		return diffCommand.call();
 	}

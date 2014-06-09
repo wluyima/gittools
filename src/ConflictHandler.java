@@ -23,9 +23,11 @@ public class ConflictHandler {
 	
 	private static final File CONFLICTS_DETAILS_FILE = new File(OUTPUT_DIR, "conflict.txt");
 	
-	private static final String ENCODING = "UTF-8";
+	private static final File MISSING_FORWARD_PORTS_FILE = new File(OUTPUT_DIR, "missing_forward_ports.txt");
 	
-	//private GitRepo cleanGitRepoOnMaster;
+	private static final File PREFER_OURS_SH = new File(OUTPUT_DIR, "prefer_ours.sh");
+	
+	private static final String ENCODING = "UTF-8";
 	
 	private GitRepo gitRepoWithConflictsOnMaster;
 	
@@ -35,9 +37,8 @@ public class ConflictHandler {
 	
 	private String asOfDateStr;
 	
-	public ConflictHandler(GitRepo cleanGitRepoOnMaster, GitRepo gitRepoWithConflictsOnMaster, GitRepo cleanGitRepoOn1_10,
-	    DateFormat df, String asOfDateStr) {
-		//this.cleanGitRepoOnMaster = cleanGitRepoOnMaster;
+	public ConflictHandler(GitRepo gitRepoWithConflictsOnMaster, GitRepo cleanGitRepoOn1_10, DateFormat df,
+	    String asOfDateStr) {
 		this.gitRepoWithConflictsOnMaster = gitRepoWithConflictsOnMaster;
 		this.cleanGitRepoOn1_10 = cleanGitRepoOn1_10;
 		this.df = df;
@@ -45,6 +46,9 @@ public class ConflictHandler {
 	}
 	
 	public void handle() throws Exception {
+		
+		setupOutputFiles();
+		
 		out.println("Generating output.....");
 		final long start = currentTimeMillis();
 		
@@ -53,8 +57,12 @@ public class ConflictHandler {
 		Set<String> pathsWhereOursWin = new LinkedHashSet<String>();
 		StringBuilder sbPathsWhereOursWinDetails = new StringBuilder();
 		StringBuilder sbPathsWithUnResolvedConflicts = new StringBuilder();
+		StringBuilder missingForwardPortsDetails = new StringBuilder();
+		StringBuilder shellScript = new StringBuilder();
 		int oursCount = 0;
 		int unresolvedConflictsCount = 0;
+		int hasBackportsCounts = 0;
+		int hasMissingForwardPortsCount = 0;
 		
 		for (String path : paths) {
 			RevCommit commit = cleanGitRepoOn1_10.getMostRecentCommitForFile(path);
@@ -68,7 +76,11 @@ public class ConflictHandler {
 			//in the cloned repo, therefore they will need to resolve the conflicts manually
 			//We use committer's date just to be more sure because it comes later than the author date
 			//since we want the most recent date when changes were made to the file
-			if (committerIdent.getWhen().after(asOfDate)) {
+			
+			//Compare file with 1.9.x versions to check for back ports and missing back ports
+			List<DiffEntry> diffs = cleanGitRepoOn1_10.getDiffEntryBetweenOneTenAndOneNine(path);
+			
+			if ((committerIdent.getWhen().after(asOfDate) || committerIdent.getWhen().equals(asOfDate))) {
 				unresolvedConflictsCount++;
 				sbPathsWithUnResolvedConflicts.append("\n\n");
 				sbPathsWithUnResolvedConflicts.append(path);
@@ -80,30 +92,27 @@ public class ConflictHandler {
 				sbPathsWithUnResolvedConflicts.append("  Committed [" + commit.getName() + "] "
 				        + df.format(committerIdent.getWhen()) + " : " + committerIdent.getName() + " : "
 				        + commit.getShortMessage());
-				if(committerIdent.getWhen().before(df.parse("2013-11-01 00:00:00"))){
-                    sbPathsWithUnResolvedConflicts.append("ISSUES:");
-                }
-				List<DiffEntry> diffs = cleanGitRepoOn1_10.getDiffEntryBetweenMasterAndOneTen(path);
-				if (diffs.size() == 0) {
-					sbPathsWithUnResolvedConflicts.append("\n");
-					sbPathsWithUnResolvedConflicts.append("   This was a back port");
-				} else {
-					//There can only be one diff since it is one file path
-					DiffEntry diff = diffs.get(0);
-					if (DiffEntry.ChangeType.ADD == diff.getChangeType()) {
-						sbPathsWithUnResolvedConflicts.append("\n");
-						sbPathsWithUnResolvedConflicts.append("   Added in 1.10.x");
-						
-					} else if (DiffEntry.ChangeType.DELETE == diff.getChangeType()) {
-						sbPathsWithUnResolvedConflicts.append("\n");
-						sbPathsWithUnResolvedConflicts.append("   Deleted in 1.10.x");
-						
-					} else if (DiffEntry.ChangeType.RENAME == diff.getChangeType()) {
-						sbPathsWithUnResolvedConflicts.append("\n");
-						sbPathsWithUnResolvedConflicts.append("   Renamed in 1.10.x");
-					}
-				}
 				
+				if (diffs.size() == 0) {
+					//This file has the same contents as the 1.9.x version but has back ports that
+					//happened after creating the 1.10.x but could be back ports between 1.9.x and 
+					//1.10.x but not yet in master
+					hasBackportsCounts++;
+					sbPathsWithUnResolvedConflicts.append("\n");
+					sbPathsWithUnResolvedConflicts.append("  Possibly a back port");
+				}
+			} else if (committerIdent.getWhen().before(asOfDate) && diffs.size() > 0) {
+				hasMissingForwardPortsCount++;
+				missingForwardPortsDetails.append("\n\n");
+				missingForwardPortsDetails.append(path);
+				missingForwardPortsDetails.append("\n");
+				missingForwardPortsDetails.append("  Authored  [" + commit.getName() + "] "
+				        + df.format(authorIdent.getWhen()) + " : " + authorIdent.getName() + " : "
+				        + commit.getShortMessage());
+				missingForwardPortsDetails.append("\n");
+				missingForwardPortsDetails.append("  Committed [" + commit.getName() + "] "
+				        + df.format(committerIdent.getWhen()) + " : " + committerIdent.getName() + " : "
+				        + commit.getShortMessage());
 			} else {
 				//File has no changes in the cloned repo branch, so ours/original version wins
 				oursCount++;
@@ -118,34 +127,49 @@ public class ConflictHandler {
 				sbPathsWhereOursWinDetails.append("  Committed [" + commit.getName() + "] "
 				        + df.format(committerIdent.getWhen()) + " : " + committerIdent.getName() + " : "
 				        + commit.getShortMessage());
+				
+				shellScript.append("\n\ngit checkout --ours -- " + path);
+				shellScript.append("\ngit add " + path);
 			}
-			//if(path.equals("api/src/main/java/org/openmrs/DrugOrder.java")){break;}
 		}
 		
 		//Write the results to the individual files
-		createFilesIfNecessary();
 		FileUtils.writeLines(MERGE_OURS_FILE, ENCODING, pathsWhereOursWin);
 		Date date = new Date();
+		
 		FileUtils.writeStringToFile(MERGE_OURS_DETAILS_FILE, "#Date:" + date + "\n#Count:" + oursCount
 		        + sbPathsWhereOursWinDetails.toString(), ENCODING);
-		FileUtils.writeStringToFile(CONFLICTS_DETAILS_FILE, "#Date:" + date + "\n" + "#Count:" + unresolvedConflictsCount
-		        + sbPathsWithUnResolvedConflicts.toString(), ENCODING);
+		
+		FileUtils.writeStringToFile(CONFLICTS_DETAILS_FILE,
+		    "#Date:" + date + "\n" + "#Count:" + unresolvedConflictsCount + "\n#Files possibly with back ports only:"
+		            + hasBackportsCounts + sbPathsWithUnResolvedConflicts.toString(), ENCODING);
+		
+		FileUtils.writeStringToFile(MISSING_FORWARD_PORTS_FILE, "#Date:" + date + "\n#Count:" + hasMissingForwardPortsCount
+		        + missingForwardPortsDetails.toString(), ENCODING);
+		
+		FileUtils.writeStringToFile(PREFER_OURS_SH, "#!/bin/bash" + shellScript.toString(), ENCODING);
 		
 		out.println("Time taken: " + ((currentTimeMillis() - start) / 1000) + "s");
 	}
 	
-	private void createFilesIfNecessary() throws Exception {
+	private void setupOutputFiles() throws Exception {
 		if (!OUTPUT_DIR.isDirectory()) {
 			OUTPUT_DIR.mkdir();
 		}
-		if (!MERGE_OURS_FILE.exists()) {
-			MERGE_OURS_FILE.createNewFile();
+		if (MERGE_OURS_FILE.exists()) {
+			MERGE_OURS_FILE.delete();
 		}
-		if (!MERGE_OURS_DETAILS_FILE.exists()) {
-			MERGE_OURS_DETAILS_FILE.createNewFile();
+		if (MERGE_OURS_DETAILS_FILE.exists()) {
+			MERGE_OURS_DETAILS_FILE.delete();
 		}
-		if (!CONFLICTS_DETAILS_FILE.exists()) {
-			CONFLICTS_DETAILS_FILE.createNewFile();
+		if (CONFLICTS_DETAILS_FILE.exists()) {
+			CONFLICTS_DETAILS_FILE.delete();
+		}
+		if (MISSING_FORWARD_PORTS_FILE.exists()) {
+			MISSING_FORWARD_PORTS_FILE.delete();
+		}
+		if (PREFER_OURS_SH.exists()) {
+			PREFER_OURS_SH.delete();
 		}
 	}
 }
