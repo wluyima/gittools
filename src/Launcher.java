@@ -8,11 +8,9 @@ public class Launcher {
 	
 	private static final File CLEAN_REPO_ON_1_10 = new File("/Users/wluyima/Documents/clean_1_10/openmrs-core");
 	
-	private static final File CLEAN_REPO_ON_MASTER = new File("/Users/wluyima/Documents/clean_master/openmrs-core");
-	
 	private static final File REPO_WITH_CONFLICTS_ON_MASTER = new File(
 	        "/Users/wluyima/Documents/conflict_master/openmrs-core");
-	
+
 	private static GitRepo gitRepoWithConflictsOnMaster;
 	
 	private static GitRepo cleanGitRepoOn1_10;

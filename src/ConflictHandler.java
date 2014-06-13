@@ -100,6 +100,22 @@ public class ConflictHandler {
 					hasBackportsCounts++;
 					sbPathsWithUnResolvedConflicts.append("\n");
 					sbPathsWithUnResolvedConflicts.append("  Possibly a back port");
+                    //File has no changes in the cloned repo branch, so ours/original version wins
+                    /*oursCount++;
+                    pathsWhereOursWin.add(path);
+                    sbPathsWhereOursWinDetails.append("\n\n");
+                    sbPathsWhereOursWinDetails.append(path);
+                    sbPathsWhereOursWinDetails.append("\n");
+                    sbPathsWhereOursWinDetails.append("  Authored  [" + commit.getName() + "] "
+                            + df.format(authorIdent.getWhen()) + " : " + authorIdent.getName() + " : "
+                            + commit.getShortMessage());
+                    sbPathsWhereOursWinDetails.append("\n");
+                    sbPathsWhereOursWinDetails.append("  Committed [" + commit.getName() + "] "
+                            + df.format(committerIdent.getWhen()) + " : " + committerIdent.getName() + " : "
+                            + commit.getShortMessage());
+
+                    shellScript.append("\n\ngit checkout --ours -- " + path);
+                    shellScript.append("\ngit add " + path);*/
 				}
 			} else if (committerIdent.getWhen().before(asOfDate) && diffs.size() > 0) {
 				hasMissingForwardPortsCount++;
