@@ -43,13 +43,15 @@ public class ReferenceApplicationContributors {
 		Map<String, String> refAppContributors = new HashMap<String, String>();
 		for (String moduleId : moduleIds) {
 			try {
-				refAppContributors.putAll(getContributors(Git.open(new File("../openmrs-module-" + moduleId)), date, null,
-				    null));
+				refAppContributors.putAll(getContributors(Git.open(new File("../openmrs-module-" + moduleId)), null, date,
+				    null, null));
 			}
 			catch (RepositoryNotFoundException e) {
 				System.out.println("Skipped because module repo can't be found for:" + moduleId);
 			}
 		}
+		
+		refAppContributors.putAll(getContributors(Git.open(new File("../openmrs-core")), "1.10.x", date, null, null));
 		
 		System.out.println("Count:" + refAppContributors.size());
 		Set<String> names = new TreeSet<String>();
@@ -74,40 +76,55 @@ public class ReferenceApplicationContributors {
 		return moduleIds;
 	}
 	
-	private static Map<String, String> getContributors(Git git, Date sinceDate, String sinceRevExclusive,
+	private static Map<String, String> getContributors(Git git, String branchName, Date sinceDate, String sinceRevExclusive,
 	                                                   String untilRevExclusive) throws Exception {
 		
-		LogCommand logCommand = git.log();
-		if (sinceRevExclusive != null && untilRevExclusive != null) {
-			logCommand.addRange(RevObject.fromString(sinceRevExclusive), RevObject.fromString(untilRevExclusive));
-		} else if (sinceRevExclusive != null) {
-			logCommand.not(RevObject.fromString(sinceRevExclusive));
+		String originalBranchName = null;
+		try {
+			if (StringUtils.isNotBlank(branchName)) {
+				originalBranchName = git.getRepository().getBranch();
+				git.checkout().setName(branchName).call();
+				System.out.println("On branch " + branchName + " for " + git.getRepository().getDirectory());
+			}
+			
+			LogCommand logCommand = git.log();
+			if (sinceRevExclusive != null && untilRevExclusive != null) {
+				logCommand.addRange(RevObject.fromString(sinceRevExclusive), RevObject.fromString(untilRevExclusive));
+			} else if (sinceRevExclusive != null) {
+				logCommand.not(RevObject.fromString(sinceRevExclusive));
+			}
+			Iterator<RevCommit> i = logCommand.call().iterator();
+			RevWalk revWalk = new RevWalk(git.getRepository());
+			Map<String, String> emailAndName = new HashMap<String, String>();
+			//List<String> names = new ArrayList<String>();
+			while (i.hasNext()) {
+				RevCommit commit = revWalk.parseCommit(i.next());
+				PersonIdent pi = commit.getAuthorIdent();
+				PersonIdent ci = commit.getCommitterIdent();
+				if (ci.getWhen().before(sinceDate)) {
+					break;
+				}
+				//System.out.println("\t[" + commit.getName() + "] " + pi.getName() + " [" + ci.getName() + "] : " + pi.getWhen()
+				//        + " : " + commit.getShortMessage());
+				if (!emailsToSkip.contains(pi.getEmailAddress())) {
+					emailAndName.put(pi.getEmailAddress(), pi.getName());
+				}
+				if (!emailsToSkip.contains(ci.getEmailAddress())) {
+					emailAndName.put(ci.getEmailAddress(), ci.getName());
+				}
+				//names.add(pi.getName());
+				//names.add(ci.getName());
+			}
+			//System.out.println("\tCount:" + names.size());
+			//System.out.println("\t" + StringUtils.join(names, ", "));
+			return emailAndName;
 		}
-		Iterator<RevCommit> i = logCommand.call().iterator();
-		RevWalk revWalk = new RevWalk(git.getRepository());
-		Map<String, String> emailAndName = new HashMap<String, String>();
-		//List<String> names = new ArrayList<String>();
-		while (i.hasNext()) {
-			RevCommit commit = revWalk.parseCommit(i.next());
-			PersonIdent pi = commit.getAuthorIdent();
-			PersonIdent ci = commit.getCommitterIdent();
-			if (ci.getWhen().before(sinceDate)) {
-				break;
+		finally {
+			if (originalBranchName != null) {
+				git.checkout().setName(originalBranchName).call();
+				System.out.println("On branch " + originalBranchName + " for " + git.getRepository().getDirectory());
 			}
-			//System.out.println("\t[" + commit.getName() + "] " + pi.getName() + " [" + ci.getName() + "] : " + pi.getWhen()
-			//        + " : " + commit.getShortMessage());
-			if (!emailsToSkip.contains(pi.getEmailAddress())) {
-				emailAndName.put(pi.getEmailAddress(), pi.getName());
-			}
-			if (!emailsToSkip.contains(ci.getEmailAddress())) {
-				emailAndName.put(ci.getEmailAddress(), ci.getName());
-			}
-			//names.add(pi.getName());
-			//names.add(ci.getName());
 		}
-		//System.out.println("\tCount:" + names.size());
-		//System.out.println("\t" + StringUtils.join(names, ", "));
-		return emailAndName;
 	}
 	
 }
