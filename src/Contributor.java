@@ -51,6 +51,7 @@ public class Contributor {
 	}
 	
 	public String getDisplayName() {
+		//TODO Fetch user details from GitHub
 		String actualName = getName();
 		try {
 			Properties props = new Properties();

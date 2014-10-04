@@ -73,6 +73,6 @@ nb-configuration.xml
 
 ### Project Files ###
 git_repo/
-cache/*
-preloaded/*
+cache/
+preloaded/
 #############
