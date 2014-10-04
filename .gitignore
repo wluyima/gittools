@@ -70,3 +70,9 @@ nb-configuration.xml
 !.travis.yml
 *~
 #############
+
+### Project Files ###
+git_repo/
+cache/*
+preloaded/*
+#############
