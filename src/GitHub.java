@@ -1,5 +1,4 @@
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,17 +35,19 @@ public class GitHub {
 		        + ((branch != null) ? branch : "master");
 		this.since = sinceString;
 		if (StringUtils.isNotBlank(since)) {
-			try {
-				new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").parse(since);
-				isSinceDate = true;
-			}
-			catch (Exception e) {
-				//ignore, it is a commit message
-				if (!since.startsWith("COMMIT@")) {
-					since = RELEASE_PLUGIN_MESSAGE_PREFIX + since;
-				} else {
-					since = since.substring(since.indexOf("COMMIT@") + 7);
+			if (since.startsWith("COMMIT@")) {
+				//it is a commit message
+				since = since.substring(since.indexOf("COMMIT@") + 7);
+			} else {
+				since = RELEASE_PLUGIN_MESSAGE_PREFIX + since;
+				/* TODO support date and time
+				try {
+					new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").parse(since);
+					isSinceDate = true;
 				}
+				catch (Exception e) {
+					since = RELEASE_PLUGIN_MESSAGE_PREFIX + since;
+				}*/
 			}
 			System.out.println(" Getting contributors since: " + since);
 		} else {
